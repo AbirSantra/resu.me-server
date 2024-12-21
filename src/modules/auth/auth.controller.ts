@@ -4,12 +4,14 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ZodValidate } from 'src/common/decorators/zod-validation.decorator';
 import { RegisterUserDTO, RegisterUserSchema } from './dto/register-user.dto';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { LoginUserDTO, LoginUserSchema } from './dto/login-user.dto';
 
 @Controller('auth')
@@ -58,5 +60,25 @@ export class AuthController {
     });
 
     return { user, accessToken };
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Req() request: Request) {
+    // console.log(request.cookies);
+
+    // Extract refresh token from cookie
+    const refreshToken = request.cookies['refreshToken'];
+
+    // Check if refresh token exists
+    if (!refreshToken) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    // Refresh access token
+    const { user, accessToken: newAccessToken } =
+      await this.authService.refreshSession(refreshToken);
+
+    return { user, newAccessToken };
   }
 }

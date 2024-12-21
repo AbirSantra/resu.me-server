@@ -1,9 +1,15 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 import { RegisterUserDTO } from './dto/register-user.dto';
 import { LoginUserDTO } from './dto/login-user.dto';
+import { JwtService } from '@nestjs/jwt';
+import { JwtPayload } from 'src/common/guards/jwt-auth.guard';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +17,7 @@ export class AuthService {
     private readonly db: PrismaService,
     private readonly passwordService: PasswordService,
     private readonly tokenService: TokenService,
+    private readonly jwtService: JwtService,
   ) {}
 
   async registerUser(registerUserData: RegisterUserDTO) {
@@ -91,7 +98,7 @@ export class AuthService {
       email: existingUser.email,
     });
 
-    const refreshToken = this.tokenService.createAccessToken({
+    const refreshToken = this.tokenService.createRefreshToken({
       id: existingUser.id,
     });
 
@@ -104,6 +111,50 @@ export class AuthService {
       },
       accessToken,
       refreshToken,
+    };
+  }
+
+  async refreshSession(refreshToken: string) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    try {
+      const { user: existingUser } =
+        await this.validateRefreshToken(refreshToken);
+
+      const newAccessToken = this.tokenService.createAccessToken({
+        id: existingUser.id,
+        email: existingUser.email,
+      });
+
+      return {
+        user: existingUser,
+        accessToken: newAccessToken,
+      };
+    } catch (error) {
+      console.log('Refresh token expired: ', error);
+      throw new UnauthorizedException('Unauthorized');
+    }
+  }
+
+  private async validateRefreshToken(refreshToken: string) {
+    // Verify token signature
+    const payload = this.jwtService.verify<JwtPayload>(refreshToken);
+
+    const existingUser = await this.db.user.findUnique({
+      where: {
+        id: payload.id,
+      },
+    });
+
+    if (!existingUser) {
+      throw new Error();
+    }
+
+    return {
+      user: existingUser,
+      payload: payload,
     };
   }
 }
